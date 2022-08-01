@@ -50,7 +50,7 @@ static int ms_pci_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 {
 	int err = 0,nvec = 4;
 	int i = 0;
-	u32 *ptr_local = NULL;
+	volatile u32 *ptr_local = NULL;
 
    printk("Initializing %s \n", pci_name(pdev));
 
