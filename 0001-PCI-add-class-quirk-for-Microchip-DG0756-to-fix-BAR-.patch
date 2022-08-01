@@ -1,0 +1,46 @@
+From 271aef81738a185a74065100731acaa07c973501 Mon Sep 17 00:00:00 2001
+From: Matthias Fend <matthias.fend@emfend.at>
+Date: Thu, 21 Jul 2022 15:24:09 +0200
+Subject: [PATCH 10/10] PCI: add class quirk for Microchip DG0756 to fix BAR
+ assignment
+
+The Microchip DG0756 FPGA image uses a class code of 0
+(PCI_CLASS_NOT_DEFINED). This prevents the PCI core from assigning
+resources for the BARs because __dev_sort_resources() ignores
+classless devices, host bridges, and IOAPICs.
+
+On x86, firmware typically assigns those resources, so this was not a
+problem.  But on some architectures, firmware does *not* assign BARs, and
+since the PCI core didn't do it either, the DG0576 device didn't work
+correctly.
+
+Add the quirk to the PCI core, where it will always run early enough that
+the PCI core will assign resources if necessary.
+
+Signed-off-by: Matthias Fend <matthias.fend@emfend.at>
+---
+ drivers/pci/quirks.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/drivers/pci/quirks.c b/drivers/pci/quirks.c
+index 41aeaa235132..9c0211bcd722 100644
+--- a/drivers/pci/quirks.c
++++ b/drivers/pci/quirks.c
+@@ -5826,6 +5826,14 @@ static void apex_pci_fixup_class(struct pci_dev *pdev)
+ DECLARE_PCI_FIXUP_CLASS_HEADER(0x1ac1, 0x089a,
+ 			       PCI_CLASS_NOT_DEFINED, 8, apex_pci_fixup_class);
+ 
++static void mpf_pci_fixup_class(struct pci_dev *pdev)
++{
++	pci_info(pdev, "FIXUP MPF class\n");
++	pdev->class = (PCI_CLASS_SYSTEM_OTHER << 8) | pdev->class;
++}
++DECLARE_PCI_FIXUP_CLASS_HEADER(0x11aa, 0x1556,
++				PCI_CLASS_NOT_DEFINED, 8, mpf_pci_fixup_class);
++
+ /*
+  * Pericom PI7C9X2G404/PI7C9X2G304/PI7C9X2G303 switch erratum E5 -
+  * ACS P2P Request Redirect is not functional
+-- 
+2.25.1
+
