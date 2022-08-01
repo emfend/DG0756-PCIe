@@ -89,13 +89,13 @@ static int ms_pci_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 #ifdef MPCIE_DMA_ENABLE
 
-		if(! (err = pci_set_dma_mask(pdev, DMA_BIT_MASK(64))))
+		if(! (err = dma_set_mask(&pdev->dev, DMA_BIT_MASK(64))))
 		{
 			/* System supports 64-bit DMA */
 				printk("System supports 64-bit DMA\n");
 		}
 		else {
-			if((err = pci_set_dma_mask(pdev, DMA_BIT_MASK(32))))
+			if((err = dma_set_mask(&pdev->dev, DMA_BIT_MASK(32))))
 			{
 				printk("No usable DMA configuration \n");
 				return 0;
@@ -151,7 +151,7 @@ static int ms_pci_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	for(i = 0;i<nvec;i++)
 	{
-		if(request_irq(pdev->irq+i, ms_pci_interrupt, IRQF_SHARED, DRV_NAME, pdev)) {
+		if(request_irq(pci_irq_vector(pdev, i), ms_pci_interrupt, IRQF_SHARED, DRV_NAME, pdev)) {
 
 			printk("unable to register irq 0x%x\n", pdev->irq);
 		}
@@ -569,13 +569,13 @@ static long char_dev_ioctl(struct file* f, u32 cmd, unsigned long arg)
 
 			sglist = sg_map->sgl;
 
-			nents = pci_map_sg(pciData->pdev, sg_map->sgl, sg_map->mapped_pages, PCI_DMA_TODEVICE);
+			nents = dma_map_sg(&pciData->pdev->dev, sg_map->sgl, sg_map->mapped_pages, DMA_TO_DEVICE);
 
 			printk("nents = %d\n",nents);
 
-	    dteVA = (DMA_TRANSFER_ELEMENT *) pci_alloc_consistent(pciData->pdev,(nents * sizeof(DMA_TRANSFER_ELEMENT)),&bus_addr);
+	    dteVA = (DMA_TRANSFER_ELEMENT *) dma_alloc_coherent(&pciData->pdev->dev,(nents * sizeof(DMA_TRANSFER_ELEMENT)),&bus_addr, GFP_KERNEL);
 
-			bufPA =	pci_map_single(pciData->pdev,dteVA,(nents * sizeof(DMA_TRANSFER_ELEMENT)),PCI_DMA_TODEVICE);
+			bufPA =	dma_map_single(&pciData->pdev->dev,dteVA,(nents * sizeof(DMA_TRANSFER_ELEMENT)),DMA_TO_DEVICE);
 			dteLA_sg = bufPA;
 
 			for (i=0; i < nents; i++) {
@@ -677,7 +677,7 @@ static long char_dev_ioctl(struct file* f, u32 cmd, unsigned long arg)
 					test = *ptr_local;
 					if(pciData->G5_SG_Dma_write_status == FALSE )
 					{
-							pci_unmap_single(pciData->pdev,bufPA,pciData->g5dmaregisters.Dma_length,PCI_DMA_TODEVICE);
+							dma_unmap_single(&pciData->pdev->dev,bufPA,pciData->g5dmaregisters.Dma_length,DMA_TO_DEVICE);
 							printk("in ioctl G5_WDMA_STATUS %d\n", test);
 							sg_destroy_mapper(sg_map);
 							pciData->G5_SG_Dma_write_status = FALSE;
@@ -722,10 +722,10 @@ static long char_dev_ioctl(struct file* f, u32 cmd, unsigned long arg)
 		rc = sgm_kernel_pages(sg_map, pciData->vbuf, pciData->g5dmaregisters.Dma_length);
 		sglist = sg_map->sgl;
 
-		nents = pci_map_sg(pciData->pdev, sg_map->sgl, sg_map->mapped_pages, PCI_DMA_FROMDEVICE);
-		dteVA = (DMA_TRANSFER_ELEMENT *) pci_alloc_consistent(pciData->pdev,(nents * sizeof(DMA_TRANSFER_ELEMENT)),&bus_addr);
+		nents = dma_map_sg(&pciData->pdev->dev, sg_map->sgl, sg_map->mapped_pages, DMA_FROM_DEVICE);
+		dteVA = (DMA_TRANSFER_ELEMENT *) dma_alloc_coherent(&pciData->pdev->dev,(nents * sizeof(DMA_TRANSFER_ELEMENT)),&bus_addr,GFP_KERNEL);
 
-		bufPA =	pci_map_single(pciData->pdev,dteVA,(nents * sizeof(DMA_TRANSFER_ELEMENT)),PCI_DMA_FROMDEVICE);
+		bufPA =	dma_map_single(&pciData->pdev->dev,dteVA,(nents * sizeof(DMA_TRANSFER_ELEMENT)),DMA_FROM_DEVICE);
 		dteLA_sg = bufPA;
 
 		for (i=0; i < nents; i++)  {
@@ -859,7 +859,7 @@ static long char_dev_ioctl(struct file* f, u32 cmd, unsigned long arg)
 					if(((test&0x1) == 0x1) || pciData->G5_SG_Dma_Read_Status == FALSE )
 					{
 						pciData->G5_SG_Dma_Read_Status = FALSE;
-						pci_unmap_single(pciData->pdev,bufPA,pciData->g5dmaregisters.Dma_length,PCI_DMA_FROMDEVICE);
+						dma_unmap_single(&pciData->pdev->dev,bufPA,pciData->g5dmaregisters.Dma_length,DMA_FROM_DEVICE);
 						if (copy_to_user((u32*)arg,(u32*)pciData->vbuf, pciData->g5dmaregisters.Dma_length))
 						{
 							return -EACCES;
@@ -902,9 +902,9 @@ static long char_dev_ioctl(struct file* f, u32 cmd, unsigned long arg)
 				return -EACCES;
 			}
 
-			bufPA = pci_map_single(pciData->pdev,pciData->kbuf,pciData->g5dmaregisters.Dma_length,PCI_DMA_TODEVICE);
+			bufPA = dma_map_single(&pciData->pdev->dev,pciData->kbuf,pciData->g5dmaregisters.Dma_length,DMA_TO_DEVICE);
 
-			if (pci_dma_mapping_error(pciData->pdev,bufPA)) {
+			if (dma_mapping_error(&pciData->pdev->dev,bufPA)) {
 			/*
 			* reduce current DMA mapping usage,
 			* delay and try again later or
@@ -979,7 +979,7 @@ static long char_dev_ioctl(struct file* f, u32 cmd, unsigned long arg)
 				test = *ptr_local;
 				if( pciData->G5_CN_Dma_write_status == FALSE )
 				{
-						pci_unmap_single(pciData->pdev,bufPA,pciData->g5dmaregisters.Dma_length,PCI_DMA_TODEVICE);
+						dma_unmap_single(&pciData->pdev->dev,bufPA,pciData->g5dmaregisters.Dma_length,DMA_TO_DEVICE);
 						//kfree(buf);
 						printk("in ioctl G5_WDMA_STATUS %d\n", test);
 						break;
@@ -1014,7 +1014,7 @@ static long char_dev_ioctl(struct file* f, u32 cmd, unsigned long arg)
 
 			pciData->G5_CN_Dma_Read_Status = TRUE;
 
-			bufPA = pci_map_single(pciData->pdev,pciData->kbuf,pciData->g5dmaregisters.Dma_length,PCI_DMA_FROMDEVICE);
+			bufPA = dma_map_single(&pciData->pdev->dev,pciData->kbuf,pciData->g5dmaregisters.Dma_length,DMA_FROM_DEVICE);
 
 			// MASK intt
 			ptr_local = (u32*)(pciData->barInfo[0].baseVAddr) + G5_DMA_IMASK_OFFSET;
@@ -1072,7 +1072,7 @@ static long char_dev_ioctl(struct file* f, u32 cmd, unsigned long arg)
 				test = *ptr_local;
 				if(pciData->G5_CN_Dma_Read_Status == FALSE )
 				{
-					pci_unmap_single(pciData->pdev,bufPA,pciData->g5dmaregisters.Dma_length,PCI_DMA_FROMDEVICE);
+					dma_unmap_single(&pciData->pdev->dev,bufPA,pciData->g5dmaregisters.Dma_length,DMA_FROM_DEVICE);
 
 					if (copy_to_user((u32 *)arg,(u32 *)pciData->kbuf, pciData->g5dmaregisters.Dma_length))
 					{
